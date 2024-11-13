@@ -26,7 +26,8 @@ function event_cb_6g(req) {
 		return 0;
 
 	let ssid = iface.ssid;
-	if (!ssid || !length(ssids[ssid].keys))
+
+	if (!ssid || !ssids[ssid].mpsk)
 		return 0;
 
 	let ssid_cache = cache[ssid];
@@ -53,7 +54,7 @@ function event_cb(req) {
 		return 0;
 
 	let ssid = iface.ssid;
-	if (!ssid || !length(ssids[ssid].keys))
+	if (!ssid || !ssids[ssid].mpsk)
 		return 0;
 
 	let ssid_cache = cache[ssid];
@@ -143,6 +144,7 @@ function netifd_reload() {
 
 			push(ssid.interfaces, iface.ifname);
 			ssid.bands[band] = iface.ifname;
+			ssid.mpsk = config.multi_psk;
 			for (let sta in iface.stations) {
 				let stacfg = sta.config;
 
