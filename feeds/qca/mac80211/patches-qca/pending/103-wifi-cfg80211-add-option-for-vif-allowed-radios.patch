@@ -180,6 +180,26 @@ Signed-off-by: Johannes Berg <johannes.berg@intel.com>
  	if (nl80211_send_iface(msg, info->snd_portid, info->snd_seq, 0,
  			       rdev, wdev, NL80211_CMD_NEW_INTERFACE) < 0) {
  		nlmsg_free(msg);
+@@ -10189,7 +10228,8 @@ static int nl80211_trigger_scan(struct s
+ 			}
+ 
+ 			/* ignore disabled channels */
+-			if (chan->flags & IEEE80211_CHAN_DISABLED)
++			if (chan->flags & IEEE80211_CHAN_DISABLED ||
++			    !cfg80211_wdev_channel_allowed(wdev, chan))
+ 				continue;
+ 
+ 			request->channels[i] = chan;
+@@ -10692,7 +10732,8 @@ nl80211_parse_sched_scan(struct wiphy *w
+ 
+ 				chan = &wiphy->bands[band]->channels[j];
+ 
+-				if (chan->flags & IEEE80211_CHAN_DISABLED)
++				if (chan->flags & IEEE80211_CHAN_DISABLED ||
++				    !cfg80211_wdev_channel_allowed(wdev, chan))
+ 					continue;
+ 
+ 				request->channels[i] = chan;
 --- a/include/net/cfg80211.h
 +++ b/include/net/cfg80211.h
 @@ -6399,6 +6399,7 @@ void wiphy_delayed_work_cancel(struct wi
@@ -199,3 +219,83 @@ Signed-off-by: Johannes Berg <johannes.berg@intel.com>
  };
  
  static inline const u8 *wdev_address(struct wireless_dev *wdev)
+@@ -6538,6 +6541,17 @@ static inline bool wdev_running(struct w
+ }
+ 
+ /**
++ * cfg80211_wdev_channel_allowed - Check if the wdev may use the channel
++ *
++ * @wdev: the wireless device
++ * @chan: channel to check
++ *
++ * Return: whether or not the wdev may use the channel
++ */
++bool cfg80211_wdev_channel_allowed(struct wireless_dev *wdev,
++				   struct ieee80211_channel *chan);
++
++/**
+  * wdev_priv - return wiphy priv from wireless_dev
+  *
+  * @wdev: The wireless device whose wiphy's priv pointer to return
+--- a/net/wireless/scan.c
++++ b/net/wireless/scan.c
+@@ -902,7 +902,8 @@ static int cfg80211_scan_6ghz(struct cfg
+ 		struct ieee80211_channel *chan =
+ 			ieee80211_get_channel(&rdev->wiphy, ap->center_freq);
+ 
+-		if (!chan || chan->flags & IEEE80211_CHAN_DISABLED)
++		if (!chan || chan->flags & IEEE80211_CHAN_DISABLED ||
++		    !cfg80211_wdev_channel_allowed(rdev_req->wdev, chan))
+ 			continue;
+ 
+ 		for (i = 0; i < rdev_req->n_channels; i++) {
+@@ -3181,9 +3182,12 @@ int cfg80211_wext_siwscan(struct net_dev
+ 			continue;
+ 
+ 		for (j = 0; j < wiphy->bands[band]->n_channels; j++) {
++			struct ieee80211_channel *chan;
++
+ 			/* ignore disabled channels */
+-			if (wiphy->bands[band]->channels[j].flags &
+-						IEEE80211_CHAN_DISABLED)
++			chan = &wiphy->bands[band]->channels[j];
++			if (chan->flags & IEEE80211_CHAN_DISABLED ||
++			    !cfg80211_wdev_channel_allowed(creq->wdev, chan))
+ 				continue;
+ 
+ 			/* If we have a wireless request structure and the
+--- a/net/wireless/util.c
++++ b/net/wireless/util.c
+@@ -3079,3 +3079,32 @@ bool cfg80211_radio_chandef_valid(const
+ 	return true;
+ }
+ EXPORT_SYMBOL(cfg80211_radio_chandef_valid);
++
++bool cfg80211_wdev_channel_allowed(struct wireless_dev *wdev,
++				   struct ieee80211_channel *chan)
++{
++	struct wiphy *wiphy = wdev->wiphy;
++	const struct wiphy_radio *radio;
++	struct cfg80211_chan_def chandef;
++	u32 radio_mask;
++	int i;
++
++	radio_mask = wdev->radio_mask;
++	if (!wiphy->n_radio || radio_mask == BIT(wiphy->n_radio) - 1)
++		return true;
++
++	cfg80211_chandef_create(&chandef, chan, NL80211_CHAN_HT20);
++	for (i = 0; i < wiphy->n_radio; i++) {
++		if (!(radio_mask & BIT(i)))
++			continue;
++
++		radio = &wiphy->radio[i];
++		if (!cfg80211_radio_chandef_valid(radio, &chandef))
++			continue;
++
++		return true;
++	}
++
++	return false;
++}
++EXPORT_SYMBOL(cfg80211_wdev_channel_allowed);

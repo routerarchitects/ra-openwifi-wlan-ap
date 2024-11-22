@@ -1,5 +1,5 @@
 #!/usr/bin/env ucode
-import { readfile } from "fs";
+import { readfile, stat } from "fs";
 import * as uci from 'uci';
 
 const bands_order = [ "6G", "5G", "2G" ];
@@ -99,8 +99,10 @@ set ${s}.htmode='${htmode}'
 set ${s}.country='${country || ''}'
 set ${s}.num_global_macaddr='${num_global_macaddr || ''}'
 set ${s}.disabled='${defaults ? 0 : 1}'
+`);
 
-set ${si}=wifi-iface
+if (!stat('/etc/config-shadow/system'))
+		print(`set ${si}=wifi-iface
 set ${si}.device='${name}'
 set ${si}.network='lan'
 set ${si}.mode='ap'

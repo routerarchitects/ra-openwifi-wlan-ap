@@ -205,6 +205,12 @@ function wiphy_detect() {
 				let freq = freq_match[0];
 				if (freq)
 					radio_band.default_channel = freq_to_channel(freq.freq);
+				radio_band.channels = [];
+				radio_band.frequencies = [];
+				for (let f in freq_match) {
+					push(radio_band.channels, freq_to_channel(f.freq));
+					push(radio_band.frequencies, f.freq);
+				}
 			}
 
 			for (let freq in band.freqs) {
