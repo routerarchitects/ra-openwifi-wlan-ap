@@ -1,8 +1,6 @@
 #!/bin/sh
-export >> /tmp/foo
 
 [ -e /lib/firmware/$FIRMWARE ] && exit 0
-
 
 . /lib/functions.sh
 . /lib/functions/system.sh
