@@ -729,6 +729,8 @@ define Package/hostapd-common/install
 	$(INSTALL_DATA) ./files/wpad.json $(1)/etc/capabilities
 	$(INSTALL_DIR) $(1)/usr/share/hostap/
 	$(INSTALL_DATA) ./files/*.uc $(1)/usr/share/hostap/
+	$(INSTALL_BIN) ./files/mpskd $(1)/usr/share/hostap/
+	$(INSTALL_BIN) ./files/mpskd.init $(1)/etc/init.d/mpskd
 endef
 
 define Package/hostapd/install

@@ -1039,7 +1039,8 @@ return {
 		bss_event("add", name);
 	},
 	bss_reload: function(phy, name, obj, reconf) {
-		bss_event("reload", name, { reconf: reconf != 0 });
+		//bss_event("reload", name, { reconf: reconf != 0 });
+		bss_event("reload", name, { reconf: false });
 	},
 	bss_remove: function(phy, name, obj) {
 		bss_event("remove", name);

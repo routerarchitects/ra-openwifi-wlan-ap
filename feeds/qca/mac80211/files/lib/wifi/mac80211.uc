@@ -94,6 +94,7 @@ for (let phy_name, phy in board.wlan) {
 set ${s}.type='mac80211'
 set ${s}.${id}
 set ${s}.band='${band_name}'
+set ${s}.ifname_prefix='phy${band_name}-'
 set ${s}.channel='${channel}'
 set ${s}.htmode='${htmode}'
 set ${s}.country='${country || ''}'
