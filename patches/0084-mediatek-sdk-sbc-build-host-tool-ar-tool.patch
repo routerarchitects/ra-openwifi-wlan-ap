@@ -1,0 +1,25 @@
+From a35195bfceb8d2240b426567e4cdf603719d1a7d Mon Sep 17 00:00:00 2001
+From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+Date: Fri, 8 Nov 2024 10:26:28 +0800
+Subject: [PATCH] mediatek-sdk: sbc build host tool ar-tool
+
+Signed-off-by: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+---
+ tools/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/Makefile b/tools/Makefile
+index 18dd2602a9..b85591e8d5 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -30,6 +30,7 @@ ifneq ($(CONFIG_SDK)$(CONFIG_TARGET_INITRAMFS_COMPRESSION_LZO),)
+   BUILD_LZO_TOOLS = y
+ endif
+ 
++tools-y += ar-tool
+ tools-y += autoconf
+ tools-y += autoconf-archive
+ tools-y += automake
+-- 
+2.45.2
+

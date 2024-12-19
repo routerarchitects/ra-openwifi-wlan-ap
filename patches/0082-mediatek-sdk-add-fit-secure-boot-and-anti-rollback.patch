@@ -1,0 +1,94 @@
+From 96f39a64dd59e0a22422402b24884fd6e70add10 Mon Sep 17 00:00:00 2001
+From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+Date: Fri, 8 Nov 2024 10:16:12 +0800
+Subject: [PATCH] mediatek-sdk: add fit secure boot and anti-rollback
+
+Signed-off-by: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+---
+ scripts/mkits.sh | 32 +++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/mkits.sh b/scripts/mkits.sh
+index 46ab5ee023..59d6a311f3 100755
+--- a/scripts/mkits.sh
++++ b/scripts/mkits.sh
+@@ -17,6 +17,7 @@
+ usage() {
+ 	printf "Usage: %s -A arch -C comp -a addr -e entry" "$(basename "$0")"
+ 	printf " -v version -k kernel [-D name -n address -d dtb] -o its_file"
++	printf "[-S key_name_hint] [-V ar_ver]"
+ 
+ 	printf "\n\t-A ==> set architecture to 'arch'"
+ 	printf "\n\t-C ==> set compression type 'comp'"
+@@ -36,6 +37,8 @@ usage() {
+ 	printf "\n\t-o ==> create output file 'its_file'"
+ 	printf "\n\t-O ==> create config with dt overlay 'name:dtb'"
+ 	printf "\n\t-s ==> set FDT load address to 'addr' (hex)"
++	printf "\n\t-S ==> add signature at configuration and assign its key_name_hint by 'key_name_hint'"
++	printf "\n\t-V ==> set anti-rollback version to 'fw_ar_ver'"
+ 	printf "\n\t\t(can be specified more than once)\n"
+ 	exit 1
+ }
+@@ -49,7 +52,7 @@ LOADABLES=
+ DTOVERLAY=
+ DTADDR=
+ 
+-while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:" OPTION
++while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:S:H:V:" OPTION
+ do
+ 	case $OPTION in
+ 		A ) ARCH=$OPTARG;;
+@@ -70,6 +73,8 @@ do
+ 		s ) FDTADDR=$OPTARG;;
+ 		H ) HASH=$OPTARG;;
+ 		v ) VERSION=$OPTARG;;
++		S ) KEY_NAME_HINT=$OPTARG;;
++		V ) AR_VER=$OPTARG;;
+ 		* ) echo "Invalid option passed to '$0' (options:$*)"
+ 		usage;;
+ 	esac
+@@ -192,6 +197,29 @@ OVCONFIGS=""
+ 	"
+ done
+ 
++# Conditionally create signature information
++if [ -n "${KEY_NAME_HINT}" ]; then
++
++	if [ -n "${LOADABLES}" ]; then
++		SIGN_IMAGES="sign-images = \"fdt\", \"kernel\", \"loadables\";"
++	else
++		SIGN_IMAGES="sign-images = \"fdt\", \"kernel\";"
++	fi
++
++	SIGNATURE="\
++			signature {
++				algo = \"sha1,rsa2048\";
++				key-name-hint = \"${KEY_NAME_HINT}\";
++			${SIGN_IMAGES}
++			};\
++"
++fi
++
++# Conditionally create anti-rollback version information
++if [ -n "${AR_VER}" ]; then
++	FW_AR_VER="fw_ar_ver = <${AR_VER}>;"
++fi
++
+ # Create a default, fully populated DTS file
+ DATA="/dts-v1/;
+ 
+@@ -228,9 +256,11 @@ ${ROOTFS_NODE}
+ 			description = \"OpenWrt ${DEVICE}\";
+ 			kernel = \"kernel${REFERENCE_CHAR}1\";
+ 			${FDT_PROP}
++			${FW_AR_VER}
+ 			${LOADABLES:+loadables = ${LOADABLES};}
+ 			${COMPATIBLE_PROP}
+ 			${INITRD_PROP}
++${SIGNATURE}
+ 		};
+ 		${OVCONFIGS}
+ 	};
+-- 
+2.45.2
+

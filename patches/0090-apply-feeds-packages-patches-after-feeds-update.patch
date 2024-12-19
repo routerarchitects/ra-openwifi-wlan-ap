@@ -1,0 +1,73 @@
+From 709a1cafd9861e2cccebc7fad472c57b83f74b65 Mon Sep 17 00:00:00 2001
+From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+Date: Fri, 8 Nov 2024 19:08:40 +0800
+Subject: [PATCH] apply feeds packages patches after feeds update
+
+Signed-off-by: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+---
+ scripts/gen_config.py | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/scripts/gen_config.py b/scripts/gen_config.py
+index 711015d119..f48170077b 100755
+--- a/scripts/gen_config.py
++++ b/scripts/gen_config.py
+@@ -6,6 +6,7 @@ from shutil import rmtree, which
+ from subprocess import run
+ import sys
+ import yaml
++import os
+ 
+ profile_folder = Path(getenv("PROFILES", "./profiles")).absolute()
+ warnings = []
+@@ -106,6 +107,38 @@ def clean_tree():
+     if Path("./.config").is_file():
+         Path("./.config").unlink()
+ 
++def apply_feeds_patches():
++    base_dir = Path.cwd().absolute()
++    folder = "../patches/feeds"
++    feeds_folder = "feeds/packages"
++
++    try:
++        print("### Applying feeds patches")
++
++        patches = []
++        patch_folder = base_dir / folder
++        if not patch_folder.is_dir():
++            print(f"Patch folder {patch_folder} not found")
++            sys.exit(-1)
++
++        print(f"Adding patches from {patch_folder}")
++
++        patches.extend(
++            sorted(list((base_dir / folder).glob("*.patch")), key=os.path.basename)
++        )
++
++        print(f"Found {len(patches)} patches")
++
++        os.chdir(base_dir / feeds_folder)
++
++        for patch in patches:
++             run(["git", "am", "-3", str(base_dir / patch)], check=True)
++        print("### Patches done")
++    except:
++        print("### Setting up the tree failed")
++        sys.exit(1)
++    finally:
++        os.chdir(base_dir)
+ 
+ def merge_profiles(profiles, include=True):
+     profile = {"packages": [], "description": [], "diffconfig": "", "feeds": {}}
+@@ -153,6 +186,8 @@ def setup_feeds(profile):
+     if run(["./scripts/feeds", "update"]).returncode:
+         die(f"Error updating feeds")
+ 
++    apply_feeds_patches()
++
+     for p in profile.get("feeds", []):
+         f = profile["feeds"].get(p)
+         if run(
+-- 
+2.45.2
+

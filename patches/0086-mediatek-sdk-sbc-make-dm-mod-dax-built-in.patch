@@ -1,0 +1,55 @@
+From 259d059c193ce98ffdcd83324286ca423a209a2b Mon Sep 17 00:00:00 2001
+From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+Date: Fri, 8 Nov 2024 10:39:16 +0800
+Subject: [PATCH] mediatek-sdk: sbc make dm-mod dax built-in
+
+Signed-off-by: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+---
+ package/kernel/linux/modules/block.mk | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/package/kernel/linux/modules/block.mk b/package/kernel/linux/modules/block.mk
+index 4ee3f78f38..162405a944 100644
+--- a/package/kernel/linux/modules/block.mk
++++ b/package/kernel/linux/modules/block.mk
+@@ -193,8 +193,7 @@ $(eval $(call KernelPackage,block2mtd))
+ define KernelPackage/dax
+   SUBMENU:=$(BLOCK_MENU)
+   TITLE:=DAX: direct access to differentiated memory
+-  KCONFIG:=CONFIG_DAX
+-  FILES:=$(LINUX_DIR)/drivers/dax/dax.ko
++  KCONFIG:=CONFIG_DAX=y
+ endef
+ 
+ $(eval $(call KernelPackage,dax))
+@@ -203,7 +202,7 @@ $(eval $(call KernelPackage,dax))
+ define KernelPackage/dm
+   SUBMENU:=$(BLOCK_MENU)
+   TITLE:=Device Mapper
+-  DEPENDS:=+kmod-crypto-manager +kmod-dax +KERNEL_KEYS:kmod-keys-encrypted
++  DEPENDS:=+kmod-crypto-manager +kmod-dax
+   # All the "=n" are unnecessary, they're only there
+   # to stop the config from asking the question.
+   # MIRROR is M because I've needed it for pvmove.
+@@ -219,16 +218,15 @@ define KernelPackage/dm
+ 	CONFIG_DM_SNAPSHOT=n \
+ 	CONFIG_DM_LOG_USERSPACE=n \
+ 	CONFIG_MD=y \
+-	CONFIG_BLK_DEV_DM \
++	CONFIG_BLK_DEV_DM=y \
+ 	CONFIG_DM_CRYPT \
+ 	CONFIG_DM_MIRROR
+   FILES:= \
+-    $(LINUX_DIR)/drivers/md/dm-mod.ko \
+     $(LINUX_DIR)/drivers/md/dm-crypt.ko \
+     $(LINUX_DIR)/drivers/md/dm-log.ko \
+     $(LINUX_DIR)/drivers/md/dm-mirror.ko \
+     $(LINUX_DIR)/drivers/md/dm-region-hash.ko
+-  AUTOLOAD:=$(call AutoLoad,30,dm-mod dm-log dm-region-hash dm-mirror dm-crypt,1)
++  AUTOLOAD:=$(call AutoLoad,30,dm-log dm-region-hash dm-mirror dm-crypt,1)
+ endef
+ 
+ define KernelPackage/dm/description
+-- 
+2.45.2
+

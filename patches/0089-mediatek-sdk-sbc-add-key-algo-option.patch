@@ -1,0 +1,71 @@
+From 84a2802524c0a41aeefe37bfd6ef2643101c8e31 Mon Sep 17 00:00:00 2001
+From: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+Date: Fri, 8 Nov 2024 10:46:20 +0800
+Subject: [PATCH] mediatek-sdk: sbc add key algo option
+
+Signed-off-by: Tim-cy Yang <Tim-cy.Yang@mediatek.com>
+---
+ scripts/mkits.sh | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/scripts/mkits.sh b/scripts/mkits.sh
+index 09d63467ff..45a2d6cd01 100755
+--- a/scripts/mkits.sh
++++ b/scripts/mkits.sh
+@@ -17,7 +17,7 @@
+ usage() {
+ 	printf "Usage: %s -A arch -C comp -a addr -e entry" "$(basename "$0")"
+ 	printf " -v version -k kernel [-D name -n address -d dtb] -o its_file"
+-	printf "[-S key_name_hint] [-V ar_ver]"
++	printf "[-S key_name_hint] [-V ar_ver] [-b key_alg]"
+ 
+ 	printf "\n\t-A ==> set architecture to 'arch'"
+ 	printf "\n\t-C ==> set compression type 'comp'"
+@@ -39,6 +39,7 @@ usage() {
+ 	printf "\n\t-s ==> set FDT load address to 'addr' (hex)"
+ 	printf "\n\t-S ==> add signature at configuration and assign its key_name_hint by 'key_name_hint'"
+ 	printf "\n\t-V ==> set anti-rollback version to 'fw_ar_ver'"
++	printf "\n\t-b ==> set key algorithm"
+ 	printf "\n\t\t(can be specified more than once)\n"
+ 	exit 1
+ }
+@@ -52,7 +53,7 @@ LOADABLES=
+ DTOVERLAY=
+ DTADDR=
+ 
+-while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:S:H:V:" OPTION
++while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:S:H:V:t:" OPTION
+ do
+ 	case $OPTION in
+ 		A ) ARCH=$OPTARG;;
+@@ -75,6 +76,7 @@ do
+ 		v ) VERSION=$OPTARG;;
+ 		S ) KEY_NAME_HINT=$OPTARG;;
+ 		V ) AR_VER=$OPTARG;;
++		b ) KEY_ALG=$OPTARG;;
+ 		* ) echo "Invalid option passed to '$0' (options:$*)"
+ 		usage;;
+ 	esac
+@@ -204,6 +206,10 @@ if [ -n "${KEY_NAME_HINT}" ]; then
+ 		SIGN_OFFLINE="sign-offline = <1>;"
+ 	fi
+ 
++	if [ -z "${KEY_ALG}" ]; then
++		KEY_ALG="sha256,rsa2048"
++	fi
++
+ 	if [ -n "${LOADABLES}" ]; then
+ 		SIGN_IMAGES="sign-images = \"fdt\", \"kernel\", \"loadables\";"
+ 	else
+@@ -212,7 +218,7 @@ if [ -n "${KEY_NAME_HINT}" ]; then
+ 
+ 	SIGNATURE="\
+ 			signature {
+-				algo = \"sha1,rsa2048\";
++				algo = \"${KEY_ALG}\";
+ 				key-name-hint = \"${KEY_NAME_HINT}\";
+ 			${SIGN_IMAGES}
+ 			${SIGN_OFFLINE}
+-- 
+2.45.2
+
