@@ -613,8 +613,6 @@ define Install/hostapd
 	$(INSTALL_DATA) ./files/radius.config $(1)/etc/config/radius
 	$(INSTALL_DATA) ./files/radius.clients $(1)/etc/radius/clients
 	$(INSTALL_DATA) ./files/radius.users $(1)/etc/radius/users
-	$(INSTALL_BIN) ./files/mpskd $(1)/usr/share/hostap/
-	$(INSTALL_BIN) ./files/mpskd.init $(1)/etc/init.d/mpskd
 endef
 
 define Install/supplicant
