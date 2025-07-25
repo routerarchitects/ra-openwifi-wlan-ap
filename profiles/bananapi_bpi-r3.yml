@@ -1,0 +1,27 @@
+---
+profile: bananapi_bpi-r3
+target: mediatek
+subtarget: filogic
+description: Build image for the Banana Pi BPi-R3
+image: bin/targets/mediatek/mt7986/openwrt-mediatek-mt7986-bananapi_bpi-r3-squashfs-sysupgrade.tar
+feeds:
+  - name: ucentral
+    path: ../../feeds/ucentral
+
+include:
+  - ucentral-ap
+
+packages:
+  - ucode
+  - ucode-mod-math
+  - ucode-mod-resolv
+  - ucode-mod-rtnl
+  - ucode-mod-struct
+  - ucode-mod-uci
+  - wpad-openssl
+  - wireless-regdb
+  - iptables-mod-physdev
+
+diffconfig: |
+  CONFIG_NET_IP_TUNNEL=y
+  CONFIG_BUSYBOX_CUSTOM=y
