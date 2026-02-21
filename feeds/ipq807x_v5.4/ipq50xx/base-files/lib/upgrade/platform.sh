@@ -81,6 +81,10 @@ platform_check_image() {
 	wallys,dr5018|\
 	hfcl,ion4x_w|\
 	hfcl,ion4xi_w|\
+	indio,um-325ax-v2|\
+	indio,um-335ax|\
+	indio,um-525axp|\
+	indio,um-525axm|\
 	optimcloud,d60|\
 	optimcloud,d60-5g|\
 	optimcloud,d50|\
@@ -107,29 +111,78 @@ platform_do_upgrade() {
 
 	board=$(board_name)
 	case $board in
-	glinet,b3000|\
+	indio,um-325ax-v2|\
+	indio,um-335ax|\
+	indio,um-525axp|\
+	indio,um-525axm)
+		if [ "$(find_mtd_chardev rootfs)" ]; then
+			CI_UBIPART="rootfs"
+		else
+			if grep -q rootfs1 /proc/cmdline; then
+				CI_UBIPART="rootfs2"
+				CI_FWSETENV="active 2"
+			else
+				CI_UBIPART="rootfs1"
+				CI_FWSETENV="active 1"
+			fi
+		fi
+		nand_upgrade_tar "$1"
+		;;
 	edgecore,oap101|\
 	edgecore,oap101-6e|\
 	edgecore,oap101e|\
 	edgecore,oap101e-6e|\
 	edgecore,eap104)
+		if [ "$(find_mtd_chardev rootfs)" ]; then
+			CI_UBIPART="rootfs"
+		else
+			if [ -e /tmp/downgrade ]; then
+				CI_UBIPART="rootfs1"
+				{ echo 'active 1'; echo 'upgrade_available 0'; } > /tmp/fw_setenv.txt || exit 1
+				CI_FWSETENV="-s /tmp/fw_setenv.txt"
+			else
+				local CI_UBIPART_B=""
+				if grep -q rootfs1 /proc/cmdline; then
+					CI_UBIPART="rootfs2"
+					CI_UBIPART_B="rootfs1"
+					CI_FWSETENV="active 2"
+				elif grep -q rootfs2 /proc/cmdline; then
+					CI_UBIPART="rootfs1"
+					CI_UBIPART_B="rootfs2"
+					CI_FWSETENV="active 1"
+				else
+					CI_UBIPART="rootfs1"
+					CI_UBIPART_B=""
+					CI_FWSETENV="active 1"
+				fi
+				if [ "$(fw_printenv -n upgrade_available 2>/dev/null)" = "0" ]; then
+					if [ -n "$CI_UBIPART_B" ]; then
+						CI_UBIPART="$CI_UBIPART_B"
+						CI_FWSETENV=""
+					fi
+				fi
+			fi
+		fi
+		nand_upgrade_tar "$1"
+		;;
+	glinet,b3000)
 		CI_UBIPART="rootfs1"
 		[ "$(find_mtd_chardev rootfs)" ] && CI_UBIPART="rootfs"
 		nand_upgrade_tar "$1"
 		;;
-        hfcl,ion4x_w|\
+	hfcl,ion4x_w|\
 	hfcl,ion4xi_w)
-                wp_part=$(fw_printenv primary | cut  -d = -f2)
-                echo "Current Primary is $wp_part"
-                if [[ $wp_part == 1 ]]; then
-                        CI_UBIPART="rootfs"
-                        CI_FWSETENV="primary 0"
-                else
-                        CI_UBIPART="rootfs_1"
-                        CI_FWSETENV="primary 1"
-                fi
-                nand_upgrade_tar "$1"
-                ;;
+		wp_part=$(fw_printenv primary | cut  -d = -f2)
+		echo "Current Primary is $wp_part"
+		if [[ $wp_part == 1 ]]; then
+				CI_UBIPART="rootfs"
+				CI_FWSETENV="primary 0"
+		else
+				CI_UBIPART="rootfs_1"
+				CI_FWSETENV="primary 1"
+		fi
+		nand_upgrade_tar "$1"
+		;;
 	cig,wf186w|\
 	cig,wf186h|\
 	emplus,wap385c|\

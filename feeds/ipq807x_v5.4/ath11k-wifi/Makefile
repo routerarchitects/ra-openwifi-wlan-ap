@@ -24,8 +24,6 @@ endef
 #
 
 ALLWIFIBOARDS:= \
-	cig-wf186w \
-	cig-wf186h \
 	cig-wf660a \
 	cig-wf194c \
 	cig-wf194c4 \
@@ -49,6 +47,11 @@ ALLWIFIBOARDS:= \
 	indio-um-310ax-v1 \
 	indio-um-510axp-v1 \
 	indio-um-510axm-v1 \
+	indio-um-325ax-v2 \
+	indio-um-335ax \
+	indio-um-345ax \
+	indio-um-525axp \
+	indio-um-525axm \
 	muxi-ap3220l \
 	plasmacloud-pax1800 \
 	wallys-dr5018 \
@@ -106,6 +109,16 @@ endef
 define Package/ath11k-wifi-cig-wf196
 $(call Package/ath11k-wifi-default)
     TITLE:=cig-wf196 bdf
+endef
+
+define Package/ath11k-wifi-cig-wf186w
+$(call Package/ath11k-wifi-default)
+    TITLE:=cig-wf186w bdf
+endef
+
+define Package/ath11k-wifi-cig-wf186h
+$(call Package/ath11k-wifi-default)
+    TITLE:=cig-wf186h bdf
 endef
 
 define Package/ath11k-wifi-gl-ax1800
@@ -284,6 +297,24 @@ define Package/ath11k-wifi-cig-wf196/install
 	$(INSTALL_DATA) ./board-cig-wf196-us.bin.IPQ8074 $(1)/lib/firmware/ath11k/IPQ8074/hw2.0/board.bin.US
 endef
 
+define Package/ath11k-wifi-cig-wf186w/install
+	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/
+	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/qcn6122/hw1.0/
+	$(INSTALL_DATA) ./board-cig-wf186w-us.bin.IPQ5018 $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/board.bin.US
+	$(INSTALL_DATA) ./board-cig-wf186w-ca.bin.IPQ5018 $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/board.bin.CA
+	$(INSTALL_DATA) ./board-cig-wf186w-us.bin.QCN6122 $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board.bin.US
+	$(INSTALL_DATA) ./board-cig-wf186w-ca.bin.QCN6122 $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board.bin.CA
+endef
+
+define Package/ath11k-wifi-cig-wf186h/install
+	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/
+	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/qcn6122/hw1.0/
+	$(INSTALL_DATA) ./board-cig-wf186h-us.bin.IPQ5018 $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/board.bin.US
+	$(INSTALL_DATA) ./board-cig-wf186h-ca.bin.IPQ5018 $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/board.bin.CA
+	$(INSTALL_DATA) ./board-cig-wf186h-us.bin.QCN6122 $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board.bin.US
+	$(INSTALL_DATA) ./board-cig-wf186h-ca.bin.QCN6122 $(1)/lib/firmware/ath11k/qcn6122/hw1.0/board.bin.CA
+endef
+
 define Package/ath11k-wifi-optimcloud-d50/install
 	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/IPQ5018/hw1.0/
 	$(INSTALL_DIR) $(1)/lib/firmware/ath11k/QCN9074/hw1.0/
@@ -393,8 +424,6 @@ define Package/ath11k-wifi-cig-wf188n/install
 	$(INSTALL_DATA) ./board-cig-wf188n-us.bin.IPQ6018 $(1)/lib/firmware/ath11k/IPQ6018/hw1.0/board.bin.US
 endef
 
-$(eval $(call generate-ath11k-wifi-package,cig-wf186w,Cigtech WF186w))
-$(eval $(call generate-ath11k-wifi-package,cig-wf186h,Cigtech WF186h))
 $(eval $(call generate-ath11k-wifi-package,cig-wf660a,Cigtech WF660a))
 $(eval $(call generate-ath11k-wifi-package,cig-wf194c,Cigtech WF194c))
 $(eval $(call generate-ath11k-wifi-package,cig-wf194c4,Cigtech WF194c4))
@@ -417,6 +446,11 @@ $(eval $(call generate-ath11k-wifi-package,liteon-wpx8324,Liteon WPX8324))
 $(eval $(call generate-ath11k-wifi-package,indio-um-310ax-v1,Indio UM-310AX V1))
 $(eval $(call generate-ath11k-wifi-package,indio-um-510axp-v1,Indio UM-510AXP V1))
 $(eval $(call generate-ath11k-wifi-package,indio-um-510axm-v1,Indio UM-510AXM V1))
+$(eval $(call generate-ath11k-wifi-package,indio-um-325ax-v2,Indio UM-325AX V2))
+$(eval $(call generate-ath11k-wifi-package,indio-um-335ax,Indio UM-335AX))
+$(eval $(call generate-ath11k-wifi-package,indio-um-345ax,Indio UM-345AX))
+$(eval $(call generate-ath11k-wifi-package,indio-um-525axp,Indio UM-525AXP))
+$(eval $(call generate-ath11k-wifi-package,indio-um-525axm,Indio UM-525AXM))
 $(eval $(call generate-ath11k-wifi-package,sonicfi-rap630c-311g,Sonicfi RAP630C 311G))
 $(eval $(call generate-ath11k-wifi-package,sonicfi-rap630w-311g,Sonicfi RAP630W 311G))
 $(eval $(call generate-ath11k-wifi-package,sonicfi-rap630w-312g,Sonicfi RAP630W 312G))
@@ -440,6 +474,8 @@ $(eval $(call BuildPackage,ath11k-wifi-qcom-ipq8074))
 $(eval $(call BuildPackage,ath11k-wifi-qcom-ipq6018))
 $(eval $(call BuildPackage,ath11k-wifi-qcom-qcn9000))
 $(eval $(call BuildPackage,ath11k-wifi-cig-wf196))
+$(eval $(call BuildPackage,ath11k-wifi-cig-wf186w))
+$(eval $(call BuildPackage,ath11k-wifi-cig-wf186h))
 $(eval $(call BuildPackage,ath11k-wifi-motorola-q14))
 $(eval $(call BuildPackage,ath11k-wifi-optimcloud-d50))
 $(eval $(call BuildPackage,ath11k-wifi-optimcloud-d60))

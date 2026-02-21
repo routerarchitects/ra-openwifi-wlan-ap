@@ -151,6 +151,14 @@
 			no-map;
 			reg = <0x0 0x4F000000 0x0 0x100000>;
 		};
+
+		ramoops: ramoops@4f100000 {
+			compatible = "ramoops";
+			reg = <0x0 0x4f100000 0x0 0x80000>;
+			record-size = <0x20000>;
+			console-size = <0x20000>;
+			pmsg-size = <0x20000>;
+		};
 	#else
 	/*                 512MB/1GB Profiles
 	 * +==========+==============+=========================+
@@ -285,6 +293,13 @@
 			reg = <0x0 0x4F800000 0x0 0x500000>;
 		};
 
+		ramoops: ramoops@4fd00000 {
+			compatible = "ramoops";
+			reg = <0x0 0x4fd00000 0x0 0x80000>;
+			record-size = <0x20000>;
+			console-size = <0x20000>;
+			pmsg-size = <0x20000>;
+		};
 	#endif
 	};
 
@@ -393,8 +408,8 @@
 				mdio-bus = <&mdio1>;
 				reset_gpio = <&tlmm 0x26 0>;
 				switch_cpu_bmp = <0x40>;  /* cpu port bitmap (Port 6 GMAC) */
-				switch_lan_bmp = <0x3c>; /* lan port bitmap */
-				switch_wan_bmp = <0x0>;  /* wan port bitmap */
+				switch_lan_bmp = <0x1c>; /* lan port bitmap */
+				switch_wan_bmp = <0x20>;  /* wan port bitmap */
 				qca,ar8327-initvals = <
 						0x00004 0x7600000   /* PAD0_MODE */
 						0x00008 0x1000000   /* PAD5_MODE */

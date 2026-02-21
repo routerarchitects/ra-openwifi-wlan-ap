@@ -1,7 +1,8 @@
 let libubus = require("ubus");
-import { open, readfile } from "fs";
+import { open, readfile, writefile } from "fs";
 import { wdev_create, wdev_remove, is_equal, vlist_new, phy_is_fullmac, phy_open } from "common";
 
+let uci = require('uci').cursor();
 let ubus = libubus.connect(null, 60);
 
 hostapd.data.config = {};
@@ -229,6 +230,17 @@ function iface_pending_init(phydev, config)
 	pending.next();
 }
 
+function iface_macaddr_init(phydev, config, macaddr_list)
+{
+        let macaddr_data = {
+                num_global: config.num_global_macaddr ?? 1,
+                macaddr_base: config.macaddr_base,
+                mbssid: config.mbssid ?? 0,
+        };
+
+        return phydev.macaddr_init(macaddr_list, macaddr_data);
+}
+
 function iface_restart(phydev, config, old_config)
 {
 	let phy = phydev.name;
@@ -246,7 +258,7 @@ function iface_restart(phydev, config, old_config)
 		return;
 	}
 
-	phydev.macaddr_init(iface_config_macaddr_list(config));
+	iface_macaddr_init(phydev, config, iface_config_macaddr_list(config));
 	for (let i = 0; i < length(config.bss); i++) {
 		let bss = config.bss[i];
 		if (bss.default_macaddr)
@@ -504,7 +516,7 @@ function iface_reload_config(phydev, config, old_config)
 		num_global: config.num_global_macaddr ?? 1,
 		mbssid: config.mbssid ?? 0,
 	};
-	macaddr_list = phydev.macaddr_init(macaddr_list, macaddr_data);
+	macaddr_list = iface_macaddr_init(phydev, config, macaddr_list);
 	for (let i = 0; i < length(config.bss); i++) {
 		if (bss_list[i])
 			continue;
@@ -673,9 +685,10 @@ function iface_load_config(filename)
 			continue;
 		}
 
-		if (val[0] == "#num_global_macaddr" ||
-		    val[0] == "mbssid")
-			config[val[0]] = int(val[1]);
+		if (val[0] == "#num_global_macaddr")
+			config[substr(val[0], 1)] = int(val[1]);
+		else if (val[0] == "multiple_bssid")
+			config.mbssid = int(val[1]);
 
 		push(config.radio.data, line);
 	}
@@ -893,10 +906,24 @@ return {
 		hostapd.ubus.disconnect();
 	},
 	afc_request: function(iface, data) {
-		let ret = ubus.call("afc", "request", { data });
-		if (type(ret) != "object")
-			return;
-		return ret.data;
+		let wireless_config = uci.get_all('wireless');
+		for (let l, afc_server in wireless_config) {
+			if (afc_server['.type'] == 'afc-server' && afc_server.url && data) {
+				hostapd.printf(`Sending AFC request: ${data}`);
+				writefile("/tmp/afc-request.json", data);
+
+				if (afc_server.access_token)
+					system(`curl -s -X POST ${afc_server.url} -H \'accept: \*\/\*\' -H \'Authorization: Bearer ${afc_server.access_token}\' -H \'Content-Type: application/json\' -d \'${data}\' --output /tmp/afc-response.json`);
+				else if (afc_server.cert)
+					system(`curl -s -X POST ${afc_server.url} -H \'accept: \*\/\*\' --cert \'${afc_server.cert}\' -H \'Content-Type: application/json\' -d \'${data}\' --output /tmp/afc-response.json`);
+
+				let afc_response = (readfile("/tmp/afc-response.json"));
+				if (afc_response)
+					return afc_response;
+				else
+					return;
+			}
+		}
 	},
 	bss_add: function(name, obj) {
 		bss_event("add", name);

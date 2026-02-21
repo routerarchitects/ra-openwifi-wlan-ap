@@ -48,6 +48,15 @@ qcom_setup_interfaces()
 		ucidef_add_switch "switch1" \
 			"6u@eth1" "1:lan" "2:lan" "3:lan" "4:lan"
 		;;
+	indio,um-325ax-v2|\
+	indio,um-335ax|\
+	indio,um-525axm|\
+	indio,um-525axp)
+		ucidef_set_interface_wan "eth1"
+		ucidef_set_interface_lan "eth0"
+		ucidef_add_switch "switch1" \
+			"6@eth1" "1:lan" "2:lan" "3:lan" "4:lan"
+		;;
 	emplus,wap385c|\
 	hfcl,ion4x_w|\
 	hfcl,ion4xi_w)
@@ -112,10 +121,13 @@ qcom_setup_macs()
 		lan_mac=$(macaddr_add "$wan_mac" 2)
 		;;
 	sonicfi,rap630e)
-		mac=$(fw_printenv -n BaseMacAddress)
+		mtd=$(find_mtd_chardev "0:APPSBLENV")
+		[ -z "$mtd" ] && return;
+		mac=$(grep BaseMacAddress= $mtd | cut -d '=' -f2)
+
 		[ -z "$mac" ] && return;
-		lan_mac=$(macaddr_canonicalize $mac)
-		wan_mac=$(macaddr_add "$wan_mac" 1)
+		wan_mac=$(macaddr_canonicalize $mac)
+		lan_mac=$(macaddr_add "$wan_mac" 1)
 		ucidef_set_network_device_mac eth1 $wan_mac
 		ucidef_set_network_device_mac eth0 $lan_mac
 		ip link set eth1 address $wan_mac

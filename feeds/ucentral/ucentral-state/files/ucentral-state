@@ -20,9 +20,68 @@ let config;
 let offline_timer;
 let current_state;
 let online = false;
+let leds_off = false;
 
 function self_healing() {
+	let heal_wifi = false;
+	let health_stat = json(fs.readfile('/tmp/ucentral.health'));
+	let last_nw_restart_ts = int(fs.readfile('/tmp/ucentral.nw_restart_ts')) || 0;
+	let time_passed_since_nw_restart = time() - last_nw_restart_ts;
 
+	if (health_stat) {
+		if (health_stat.data.rrm_chanutil == false) {
+			// RRM with Channel utilization abnormal, restart rrmd
+			ulog(LOG_INFO, 'RRM with Channel utilization abnormal, restarting rrmd\n');
+			system('/etc/init.d/rrmd restart');
+		}
+
+		if (health_stat.sanity != 100) {
+			for (let iface in health_stat.data.interfaces) {
+				let iface_data = health_stat.data.interfaces[iface];
+				if (iface_data.ssids) {
+					// one of the VAPs have an issue: flag up!
+					heal_wifi = true;
+					ulog(LOG_INFO, 'Time passed since last network restart = %d seconds\n', time_passed_since_nw_restart);
+					break;
+				}
+			}
+		} else {
+			// all VAPs are healthy, no need to heal anything
+			return;
+		}
+	}
+
+	if (fs.stat('/tmp/rrm_timestamp')) {
+		let rrm_chan_switch_flag = int(fs.readfile('/tmp/rrm_chan_switch')) || 0;
+		let last_rrm_timestamp = int(fs.readfile('/tmp/rrm_timestamp'));
+		let time_passed_since_rrm = time() - last_rrm_timestamp;
+
+		if (rrm_chan_switch_flag == 1) {
+			// RRM chan switch in progress, do not restart network!
+			ulog(LOG_INFO, 'RRM channel switch in progress, cannot restart network \n');
+			heal_wifi = false;
+		}
+
+		if (time_passed_since_rrm < 180) {
+			// RRM in progress, do not restart network!
+			ulog(LOG_INFO, 'RRM with Channel utilization may still be in progress, cannot restart network \n');
+			heal_wifi = false;
+		}
+	}
+
+	// keep a gap of at least 5 minutes between network restarts
+	if (heal_wifi && time_passed_since_nw_restart > 300) {
+		ulog(LOG_INFO, 'Restarting network \n');
+		// update network restart timestamp
+		let f = fs.open("/tmp/ucentral.nw_restart_ts", "w");
+		if (f) {
+			f.write(time());
+			f.close();
+		}
+
+		// restart network
+		system('/etc/init.d/network restart');
+	}
 }
 
 let healthcheck;
@@ -42,7 +101,7 @@ healthcheck = {
 	},
 
 	spawn: function() {
-		ulog(LOG_INFO, 'healtcheck execute\n');
+		ulog(LOG_INFO, 'healthcheck execute\n');
 		healthcheck.pid = uloop.process('/usr/share/ucentral/health.uc', [], {}, healthcheck.complete);
 	},
 };
@@ -90,6 +149,13 @@ function online_handler() {
 
 function config_load() {
 	ulog(LOG_INFO, 'loading config\n');
+
+	uci.load('system');
+	let led_off_cfg = uci.get("system", "@system[0]", "leds_off");
+	if (led_off_cfg == 1) {
+		leds_off = true;
+	}
+
 	uci.load('state');
 	config = uci.get_all('state');
 
@@ -133,7 +199,7 @@ function led_find(alias) {
 function factory_reset_timeout() {
 	let led = led_find('led-running');
 	if (led)
-		led_write(led, 'trigger', 'default-on');
+		led_write(led, 'trigger', leds-off ? 'none' : 'default-on');
 }
 
 let blink_timer;
@@ -152,7 +218,7 @@ let state_handler = {
 	offline: function() {
 		online = false;
 		let led = led_find('led-running');
-		if (led)
+		if (!leds_off && led)
 			led_write(led, 'trigger', 'heartbeat');
 		if (config.ui.offline_trigger) {
 			if (offline_timer)
@@ -165,7 +231,7 @@ let state_handler = {
 	online: function() {
 		online = true;
 		let led = led_find('led-running');
-		if (led)
+		if (!leds_off && led)
 			led_write(led, 'trigger', 'default-on');
 		online_handler();
 		return 0;
@@ -207,7 +273,7 @@ let ubus_methods = {
 			current_state = req.args.state;
 			blink_timeout();
 			ulog(LOG_INFO, 'set state -> ' + req.args.state + '\n');
-			
+
 			return state_handler[req.args.state](req.args);
 		},
 		args: {

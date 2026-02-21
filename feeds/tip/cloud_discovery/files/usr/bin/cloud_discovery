@@ -3,6 +3,7 @@
 'use strict';
 
 import { ulog_open, ulog, ULOG_SYSLOG, ULOG_STDIO, LOG_DAEMON, LOG_INFO } from 'log';
+import { query } from 'resolv';
 import * as libubus from 'ubus';
 import * as uloop from 'uloop';
 import * as libuci from 'uci';
@@ -15,9 +16,19 @@ const ONLINE = 2;
 const OFFLINE = 3;
 const ORPHAN = 4;
 
+const DISCOVER_DHCP = "DHCP";
+const DISCOVER_FLASH = "FLASH";
+const DISCOVER_FQDN = "STANDARD_FQDN";
+const DISCOVER_LOOKUP = "OpenLAN";
+
+const STANDARD_FQDN = "openwifi.wlan.local";
+const STANDARD_FQDN_PORT = 15002;
+
 let ubus = libubus.connect();
 let uci = libuci.cursor();
 let state = DISCOVER;
+let discovery_method = "";
+let discovery_block_list = [];
 let validate_time;
 let offline_time;
 let orphan_time;
@@ -27,6 +38,8 @@ let timeouts = {
 	'validate': 120,
 	'orphan': 2 * 60 * 60,
 	interval: 10000,
+	expiry_interval: 60 * 60 * 1000,
+	expiry_threshold: 1 * 365 * 24 * 60 * 60,
 };
 
 ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, "cloud_discover");
@@ -34,6 +47,24 @@ ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, "cloud_discover");
 ulog(LOG_INFO, 'Start\n');
 
 uloop.init();
+
+let cds_server = 'discovery.open-lan.org';
+
+function detect_certificate_type() {
+	let pipe = fs.popen(`openssl x509 -in /etc/ucentral/cert.pem -noout -issuer`);
+	let issuer = pipe.read("all");
+	pipe.close();
+
+	if (match(issuer, /OpenLAN Demo Birth CA/)) {
+		ulog(LOG_INFO, 'Certificate type is "Demo" \n');
+		cds_server = 'discovery-qa.open-lan.org';
+		timeouts.expiry_threshold = 3 * 24 * 60 * 60;
+	} else if (match(issuer, /OpenLAN Birth Issuing CA/)) {
+		ulog(LOG_INFO, 'Certificate type is "Production"\n');
+	} else {
+		ulog(LOG_INFO, 'Certificate type is "TIP"\n');
+	}
+}
 
 function readjsonfile(path) {
 	let file = fs.readfile(path);
@@ -76,12 +107,23 @@ function gateway_load() {
 	return readjsonfile('/etc/ucentral/gateway.json');
 }
 
+function discovery_state_write() {
+	if (length(discovery_method) == 0)
+		return;
+
+	let discovery_state = {
+		"type": discovery_method,
+		"updated": time()
+	};
+	fs.writefile('/etc/ucentral/discovery.state.json', discovery_state);
+}
+
 function gateway_write(data) {
 	let gateway = gateway_load();
 	gateway ??= {};
 	let new = {};
 	let changed = false;
-	for (let key in [ 'server', 'port', 'valid', 'hostname_validate' ]) {
+	for (let key in [ 'server', 'port', 'valid', 'hostname_validate', 'cert', 'ca' ]) {
 		if (exists(data, key))
 			new[key] = data[key];
 		else if (exists(gateway, key))
@@ -89,8 +131,10 @@ function gateway_write(data) {
 		if (new[key] != gateway[key])
 			changed = true;
 	}
-	if (changed)
+	if (changed) {
 		fs.writefile('/etc/ucentral/gateway.json', new);
+		system('sync');
+	}
 	return changed;
 }
 
@@ -99,6 +143,17 @@ function gateway_available() {
 	if (!gateway || !gateway.server || !gateway.port)
 		return false;
 	return true;
+}
+
+function dnsmasq_rebind_allow(fqdn) {
+	let config_dir = '/tmp/dnsmasq.d';
+	let config_file = `${config_dir}/cloud-discovery.conf`;
+
+	if (!fs.stat(config_dir))
+		fs.mkdir(config_dir);
+
+	fs.writefile(config_file, `rebind-domain-ok=/${fqdn}/\n`);
+	system('/etc/init.d/dnsmasq reload');
 }
 
 function set_state(set) {
@@ -120,6 +175,7 @@ function set_state(set) {
 		ulog(LOG_INFO, 'Wait for validation\n');
 		validate_time = time();
 		state = VALIDATING;
+		push(discovery_block_list, discovery_method);
 		break;
 
 	case ONLINE:
@@ -127,6 +183,8 @@ function set_state(set) {
 		if (prev == VALIDATING) {
 			ulog(LOG_INFO, 'Setting cloud controller to validated\n');
 			gateway_write({ valid: true });
+			discovery_state_write();
+			discovery_block_list = [];
 		}
 		break;
 
@@ -145,8 +203,21 @@ function set_state(set) {
 function discover_dhcp() {
 	let dhcp = readjsonfile('/tmp/cloud.json');
 	if (dhcp?.dhcp_server && dhcp?.dhcp_port) {
-		if (gateway_write({ server: dhcp.dhcp_server, port:dhcp.dhcp_port, valid: false, hostname_validate: dhcp.no_validation ? 0 : 1 })) {
-			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port}\n`);
+		let fqdn = split(dhcp.dhcp_server, ':')[0];
+		dnsmasq_rebind_allow(fqdn);
+		if (gateway_write({
+			server: dhcp.dhcp_server,
+			port: dhcp.dhcp_port,
+			valid: false,
+			hostname_validate: dhcp.no_validation ? 0 : 1,
+			cert: `/etc/ucentral/${fqdn}.pem`,
+			ca: `/etc/ucentral/${fqdn}.ca`
+		})) {
+			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - trying EST\n`);
+			fs.writefile('/tmp/discovery.method', DISCOVER_DHCP);
+			if (system('/usr/bin/est_client enroll'))
+	                        return false;
+			ulog(LOG_INFO, `Discovered cloud via DHCP ${dhcp.dhcp_server}:${dhcp.dhcp_port} - starting client\n`);
 			client_start();
 			set_state(VALIDATING);
 		}
@@ -161,16 +232,24 @@ function redirector_lookup() {
 	let serial = uci.get('system', '@system[-1]', 'mac');
 
 	fs.unlink(path);
-	system(`curl -k --cert /etc/ucentral/operational.pem --key /etc/ucentral/key.pem --cacert /etc/ucentral/operational.ca https://openlan.keys.tip.build/v1/devices/${serial} --output /tmp/ucentral.redirector`);
+	system(`curl -k --cert /etc/ucentral/operational.pem --key /etc/ucentral/key.pem --cacert /etc/ucentral/operational.ca https://${cds_server}/v1/devices/${serial} --output /tmp/ucentral.redirector`);
 	if (!fs.stat(path))
 		return;
 	let redir = readjsonfile(path);
 	if (redir?.controller_endpoint) {
 		let controller_endpoint = split(redir.controller_endpoint, ':');
-		if (gateway_write({ server: controller_endpoint[0], port: controller_endpoint[1] || 15002, valid: false, hostname_validate: 1 })) {
+		if (gateway_write({
+			server: controller_endpoint[0],
+			port: controller_endpoint[1] || 15002,
+			valid: false,
+			hostname_validate: 1,
+			cert: '/etc/ucentral/operational.pem',
+			ca: '/etc/ucentral/operational.ca'
+		})) {
 			ulog(LOG_INFO, `Discovered cloud via lookup service ${controller_endpoint[0]}:${controller_endpoint[1] || 15002}\n`);
-                        client_start();
-                	set_state(VALIDATING);
+			fs.writefile('/tmp/discovery.method', DISCOVER_LOOKUP);
+			client_start();
+			set_state(VALIDATING);
 		}
 	} else {
 		ulog(LOG_INFO, 'Failed to discover cloud endpoint\n');
@@ -182,9 +261,42 @@ function discover_flash() {
 		return 1;
 	ulog(LOG_INFO, 'Using pre-populated cloud information\n');
 	fs.writefile('/etc/ucentral/gateway.json', fs.readfile('/etc/ucentral/gateway.flash'));
+	fs.writefile('/tmp/discovery.method', DISCOVER_FLASH);
 	client_start();
 	set_state(VALIDATING);
 	return 0;
+}
+
+function discover_standard_fqdn() {
+	ulog(LOG_INFO, `Trying standard FQDN: ${STANDARD_FQDN}\n`);
+
+	let result = query([STANDARD_FQDN], { type: ['A'] });
+	if (!result || !result[STANDARD_FQDN] || !result[STANDARD_FQDN].A) {
+		ulog(LOG_INFO, `Failed to resolve ${STANDARD_FQDN}\n`);
+		return false;
+	}
+
+	let address = result[STANDARD_FQDN].A[0];
+	ulog(LOG_INFO, `Resolved ${STANDARD_FQDN} to ${address}\n`);
+
+	dnsmasq_rebind_allow(STANDARD_FQDN);
+
+	if (gateway_write({
+		server: STANDARD_FQDN,
+		port: STANDARD_FQDN_PORT,
+		valid: false,
+		hostname_validate: 1,
+		cert: `/etc/ucentral/${STANDARD_FQDN}.pem`,
+		ca: `/etc/ucentral/${STANDARD_FQDN}.ca`
+	})) {
+		ulog(LOG_INFO, `Discovered cloud via standard FQDN ${STANDARD_FQDN}\n`);
+		fs.writefile('/tmp/discovery.method', DISCOVER_FQDN);
+		client_start();
+		set_state(VALIDATING);
+		return true;
+	}
+
+	return false;
 }
 
 function time_is_valid() {
@@ -193,6 +305,13 @@ function time_is_valid() {
 		ntp_restart();
 	ulog(LOG_INFO, `Time is ${valid ? '': 'not '}valid\n`);
 	return valid;
+}
+
+function is_discover_method_blacked() {
+	if (discovery_method in discovery_block_list)
+		return true;
+
+	return false;
 }
 
 function interval_handler() {
@@ -220,20 +339,29 @@ function interval_handler() {
 
 	case DISCOVER:
 		ulog(LOG_INFO, 'Starting discover\n');
-	
+
 		if (!time_is_valid())
 			return;
 
-		if (discover_dhcp())
+		discovery_method = DISCOVER_DHCP;
+		if (!is_discover_method_blacked() && discover_dhcp())
 			return;
 
 		if (system('/usr/bin/est_client enroll'))
 			return;
 
-		if (!discover_flash())
+		discovery_method = DISCOVER_FLASH;
+		if (!is_discover_method_blacked() && !discover_flash())
 			return;
 
+		discovery_method = DISCOVER_FQDN;
+		if (!is_discover_method_blacked() && discover_standard_fqdn())
+			return;
+
+		discovery_method = DISCOVER_LOOKUP;
 		redirector_lookup();
+
+		discovery_block_list = [];
 		break;
 
 	case VALIDATING:
@@ -250,6 +378,36 @@ function interval_handler() {
 		set_state(ORPHAN);
 		break;
 	}
+}
+
+function trigger_reenroll() {
+	ulog(LOG_INFO, 'triggering reenroll\n');
+
+	if (system('/usr/bin/est_client reenroll')) {
+		ulog(LOG_INFO, 'reenroll failed\n');
+		return;
+	}
+	
+	ulog(LOG_INFO, 'reenroll succeeded\n');
+	ulog(LOG_INFO, 'stopping client\n');
+	
+	system('/etc/init.d/ucentral stop');
+	set_state(DISCOVER);
+}
+
+function expiry_handler() {
+	let stat = fs.stat('/etc/ucentral/operational.ca');
+	if (!stat)
+		return;
+
+	let ret = system(`openssl x509 -checkend ${timeouts.expiry_threshold} -noout -in /etc/ucentral/operational.pem`);
+	if (!ret) {
+		ulog(LOG_INFO, 'checked certificate expiry - all ok\n');
+		return;
+	}
+
+	ulog(LOG_INFO, 'certificate will expire soon\n');
+	trigger_reenroll();
 }
 
 let ubus_methods = {
@@ -326,7 +484,16 @@ let ubus_methods = {
 		},
 		args: {},
 	},
+	reenroll: {
+		call: function(req) {
+			trigger_reenroll();
+			return 0;
+		},
+		args: {},
+	},
 };
+
+detect_certificate_type();
 
 if (gateway_available()) {
 	let status = ubus.call('ucentral', 'status');
@@ -344,6 +511,7 @@ if (gateway_available()) {
 timeouts_load();
 
 interval = uloop.interval(timeouts.interval, interval_handler);
+uloop.interval(timeouts.expiry_interval, expiry_handler);
 
 ubus.publish('cloud', ubus_methods);
 

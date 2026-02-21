@@ -1,18 +1,23 @@
 #!/bin/sh
 
 check_certificates() {
-	[ -f /certificates/cert.pem -a -f /certificates/key.pem ] && exit 0
+	[ -f /certificates/cert.pem -a -f /certificates/key.pem ] || return 1
+	[ -n "$1" ] && [ ! -f /certificates/operational.pem ] && return 1
+	exit 0
 }
 
-check_certificates
+check_certificates 1
 
-bootconfig_lookup() {
-	case "$(fw_printenv -n cert_part)" in
-	0)	echo "0:BOOTCONFIG"
-		;;
-	1)	echo "0:BOOTCONFIG1"
-		;;
-	esac
+tar_part_lookup() {
+	part="$(fw_printenv -n cert_part)"
+	if [ "$part" -eq 0 ]; then
+		echo "$2"
+		part=1
+	else
+		echo "$1"
+		part=0
+	fi
+	fw_setenv cert_part $part
 }
 
 . /lib/functions.sh
@@ -34,12 +39,29 @@ sonicfi,rap7*)
 		mtd=$(find_mtd_index certificates)
 		[ -n "$mtd" ] && mount -t ext4 /dev/mtdblock$mtd /certificates
 	fi
-	if [ ! -f /certificates/cert.pem ] || [ ! -f /certificates/key.pem ]; then
-		bootconfig=$(bootconfig_lookup)
-		if [ -n "$bootconfig" ]; then
-			mmc_dev=$(echo $(find_mmc_part "$bootconfig") | sed 's/^.\{5\}//')
-			[ -n "$mmc_dev" ] && tar xf /dev/$mmc_dev -C /certificates
-		fi
+	;;
+sonicfi,rap6*)
+	mtd=$(find_mtd_index certificates)
+	if [ "$(head -c 4 /dev/mtd$mtd)" == "hsqs" ]; then
+		mount -t squashfs /dev/mtdblock$mtd /mnt
+		cp /mnt/* /certificates
+		umount /mnt
+	fi
+		mtd=$(find_mtd_index devinfo)
+		[ -n "$mtd" ] && tar xf /dev/mtdblock$mtd -C /certificates
+	;;
+udaya,a5-id2|\
+yuncore,ax820)
+	mtd=$(find_mtd_index certificates)
+	if [ "$(head -c 4 /dev/mtd$mtd)" == "hsqs" ]; then
+		mount -t squashfs /dev/mtdblock$mtd /mnt
+		cp /mnt/* /certificates
+		umount /mnt
+	fi
+	part=$(tar_part_lookup "insta1" "insta2")
+	if [ -n "insta" ]; then
+		mtd=$(find_mtd_index $part)
+		[ -n "$mtd" ] && tar xf /dev/mtdblock$mtd -C /certificates
 	fi
 	;;
 *)
@@ -56,9 +78,9 @@ sonicfi,rap7*)
 	fi
 esac
 
-check_certificates
+check_certificates 1
 
-# if we get here no valid certificates were found
+# if we get here no valid operational certificates were found
 
 PART_NAME=
 
@@ -124,6 +146,7 @@ senao,jeap6500)
 	PART_NAME=ubi
 	;;
 *)
+	check_certificates
 	return 1
 	;;
 esac
@@ -135,4 +158,7 @@ MTD=$(find_mtd_index $PART_NAME)
 ubiattach -m $MTD -d 3
 [ -e /dev/ubi3 ] && mount -t ubifs ubi3:certificates /certificates
 
-check_certificates
+check_certificates || {
+	umount /certificates
+	check_certificates
+}

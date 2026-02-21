@@ -52,6 +52,19 @@ define Device/edgecore_eap105
 endef
 TARGET_DEVICES += edgecore_eap105
 
+define Device/emplus_wap7635
+  DEVICE_TITLE := EMPLUS WAP7635
+  DEVICE_DTS := ipq5332-emplus-wap7635
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.6
+  IMAGES := sysupgrade.tar nand-factory.bin nand-factory.ubi
+  IMAGE/sysupgrade.tar := sysupgrade-tar | append-metadata
+  IMAGE/nand-factory.bin := append-ubi | qsdk-ipq-factory-nand
+  IMAGE/nand-factory.ubi := append-ubi
+  DEVICE_PACKAGES := ath12k-wifi-emplus-wap7635 ath12k-firmware-qcn92xx ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += emplus_wap7635
+
 define Device/sonicfi_rap7110c_341x
   DEVICE_TITLE := SONICFI RAP7110C-341X
   DEVICE_DTS := ipq5332-sonicfi-rap7110c-341x
@@ -149,6 +162,37 @@ define Device/zyxel_nwa130be
 endef
 TARGET_DEVICES += zyxel_nwa130be
 
+
+define Device/zyxel_nwa50be
+  DEVICE_TITLE := Zyxel NWA50BE
+  DEVICE_DTS := ipq5332-zyxel-nwa50be
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.3
+  IMAGES := sysupgrade.tar nand-factory.bin nand-factory.ubi
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE/sysupgrade.tar := sysupgrade-tar | append-metadata
+  IMAGE/nand-factory.bin := append-ubi | qsdk-ipq-factory-nand
+  IMAGE/nand-factory.ubi := append-ubi
+  DEVICE_PACKAGES := ath12k-wifi-zyxel-nwa50be ath12k-firmware-ipq5332-peb-peb -ath12k-firmware-qcn92xx
+endef
+TARGET_DEVICES += zyxel_nwa50be
+
+define Device/zyxel_nwa210be
+  DEVICE_TITLE := Zyxel NWA210BE
+  DEVICE_DTS := ipq5332-zyxel-nwa210be
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_DTS_CONFIG := config@mi01.6
+  IMAGES := sysupgrade.tar nand-factory.bin nand-factory.ubi
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE/sysupgrade.tar := sysupgrade-tar | append-metadata
+  IMAGE/nand-factory.bin := append-ubi | qsdk-ipq-factory-nand
+  IMAGE/nand-factory.ubi := append-ubi
+  DEVICE_PACKAGES := ath12k-wifi-zyxel-nwa210be ath12k-firmware-qcn92xx ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += zyxel_nwa210be
+
 define Device/cig_wf672
   DEVICE_TITLE := CIG WF672
   DEVICE_DTS := ipq5332-cig-wf672
@@ -160,3 +204,16 @@ define Device/cig_wf672
   DEVICE_PACKAGES := ath12k-wifi-cig-wf672 ath12k-firmware-ipq5332 ath12k-firmware-qcn92xx
 endef
 TARGET_DEVICES += cig_wf672
+
+define Device/asterfusion_ap7330
+  DEVICE_TITLE := Asterfusion AP7330
+  DEVICE_DTS := ipq5332-asterfusion-ap7330
+  DEVICE_DTS_CONFIG := config@mi01.6
+  DEVICE_DTS_DIR := ../dts
+  SUPPORTED_DEVICES := asterfusion,AP7330 AP7330
+  IMAGE/sysupgrade.tar := sysupgrade-tar | append-metadata
+  IMAGE/nand-factory.bin := append-ubi | qsdk-ipq-factory-nand
+  IMAGE/nand-factory.ubi := append-ubi
+  DEVICE_PACKAGES := ath12k-wifi-asterfusion-ap7330 ath12k-firmware-qcn92xx ath12k-firmware-ipq5332
+endef
+TARGET_DEVICES += asterfusion_ap7330
