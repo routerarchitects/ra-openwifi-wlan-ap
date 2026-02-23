@@ -3,12 +3,11 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=ucentral-tools
 PKG_RELEASE:=1
 
-PKG_SOURCE_URL=https://github.com/blogic/ucentral-tools.git
-PKG_MIRROR_HASH:=9ae6a0cd431595871c233550427c4043c2ba7ddb3c5d87e46ab74a03b2b5a947
+PKG_SOURCE_URL=https://github.com/routerarchitects/ucentral-tools.git
+PKG_MIRROR_HASH:=6b69ac0378d879e1a78606bc837e8f8a3d6ba8a6c53817acbcce987a639ad04d
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_DATE:=2021-01-28
-PKG_SOURCE_VERSION:=b013fc636e48d407870a46aaa68a09ed74de8d6f
-
+PKG_SOURCE_DATE:=2025-09-29
+PKG_SOURCE_VERSION:=17bd7d5574a0f62b972c40898710f04509b7cf64
 PKG_MAINTAINER:=John Crispin <john@phrozen.org>
 PKG_LICENSE:=BSD-3-Clause
 
