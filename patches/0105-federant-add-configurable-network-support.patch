@@ -1,0 +1,62 @@
+From 20744595f113a27f9bca4afebb8e81176388476d Mon Sep 17 00:00:00 2001
+From: Taruna Chaudhary <taruna.chaudhary@routerarchitects.com>
+Date: Thu, 13 Aug 2026 15:23:58 +0530
+Subject: [PATCH] [FEDERANT] Add configurable network support
+
+Change Type: Enhancement
+
+Requirement:
+OpenWiFi devices require configurable LAN/WAN interface mapping.
+
+Solution:
+- Add LAN_INTERFACES and WAN_INTERFACE environment overrides with default interface values.
+- Validate configured interfaces before applying the network mapping.
+- Prevent the same interface from being assigned to both LAN and WAN.
+---
+ .../files/etc/board.d/99-default_network      | 30 +++++++++++++++++--
+ 1 file changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/package/base-files/files/etc/board.d/99-default_network b/package/base-files/files/etc/board.d/99-default_network
+index 49d2a3b354..792aab6722 100644
+--- a/package/base-files/files/etc/board.d/99-default_network
++++ b/package/base-files/files/etc/board.d/99-default_network
+@@ -8,8 +8,34 @@ board_config_update
+ 
+ json_is_a network object && exit 0
+ 
+-ucidef_set_interface_lan 'eth0'
+-[ -d /sys/class/net/eth1 ] && ucidef_set_interface_wan 'eth1'
++lan_interfaces="${LAN_INTERFACES:-eth0}"
++wan_interface="${WAN_INTERFACE:-eth1}"
++
++# Validate all resolved LAN interfaces.
++for interface in $lan_interfaces; do
++	[ -d "/sys/class/net/$interface" ] || {
++		echo "LAN interface '$interface' does not exist" >&2
++		exit 1
++	}
++done
++
++# Validate the resolved WAN interface, including the default eth1.
++[ -d "/sys/class/net/$wan_interface" ] || {
++	echo "WAN interface '$wan_interface' does not exist" >&2
++	exit 1
++}
++
++# Prevent an interface from being assigned to both LAN and WAN.
++for interface in $lan_interfaces; do
++	[ "$interface" != "$wan_interface" ] || {
++		echo "Interface '$interface' cannot be assigned to both LAN and WAN" >&2
++		exit 1
++	}
++done
++
++# Apply the configuration only after all validation succeeds.
++ucidef_set_interface_lan "$lan_interfaces"
++ucidef_set_interface_wan "$wan_interface"
+ 
+ board_config_flush
+ 
+-- 
+2.34.1
+

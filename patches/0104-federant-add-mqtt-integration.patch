@@ -1,0 +1,317 @@
+From a6adb780a56fa3e7b947e9928cde6ab5b58986e4 Mon Sep 17 00:00:00 2001
+From: Taruna Chaudhary <taruna.chaudhary@routerarchitects.com>
+Date: Thu, 13 Aug 2026 14:52:10 +0530
+Subject: [PATCH] [FEDERANT][MQTT] Add MQTT integration
+
+Change Type: Enhancement
+
+Requirement:
+OpenWiFi devices require MQTT integration to exchange operational data with the uCentral stack and publish DHCP lease change notifications.
+
+Solution:
+
+- Add Federant MQTT UCI configuration for broker settings, uCentral topic subscription, and DHCP device classification.
+- Add a procd-managed Federant MQTT service.
+- Add MQTT subscription handling for /UCENTRAL_FEED and forward received payloads to ucentral health.
+- Add DHCP lease monitoring and publish added/removed lease notifications to /dhcp/notification.
+---
+ files/etc/config/federant_mqtt                |  12 ++
+ files/etc/init.d/federant_mqtt                |  22 +++
+ files/etc/uci-defaults/99-federant-mqtt       |   5 +
+ files/usr/share/ucentral/federant_mqtt.sh     |  47 +++++
+ .../usr/share/ucentral/federant_mqtt_dhcp.sh  | 169 ++++++++++++++++++
+ 5 files changed, 255 insertions(+)
+ create mode 100644 files/etc/config/federant_mqtt
+ create mode 100755 files/etc/init.d/federant_mqtt
+ create mode 100755 files/etc/uci-defaults/99-federant-mqtt
+ create mode 100755 files/usr/share/ucentral/federant_mqtt.sh
+ create mode 100755 files/usr/share/ucentral/federant_mqtt_dhcp.sh
+
+diff --git a/files/etc/config/federant_mqtt b/files/etc/config/federant_mqtt
+new file mode 100644
+index 0000000000..f250f29eee
+--- /dev/null
++++ b/files/etc/config/federant_mqtt
+@@ -0,0 +1,12 @@
++config mqttpipe 'config'
++	option enabled 1
++	option mqtt_url 'mqtt://localhost'
++	option mqtt_port 1883
++
++config mqttpipe 'dhcp'
++
++config mqttpipe 'ucentral'
++        option summary 'uCentral Operational Data'
++        option topic '/'
++        list 'parameter' 'UCENTRAL_FEED'
++
+diff --git a/files/etc/init.d/federant_mqtt b/files/etc/init.d/federant_mqtt
+new file mode 100755
+index 0000000000..919be4b1aa
+--- /dev/null
++++ b/files/etc/init.d/federant_mqtt
+@@ -0,0 +1,22 @@
++#!/bin/sh /etc/rc.common
++
++START=99
++USE_PROCD=1
++
++start_service() {
++        # Task 1: /UCENTRAL_FEED -> ucentral health
++        procd_open_instance ucentral
++        procd_set_param command /usr/share/ucentral/federant_mqtt.sh
++        procd_set_param respawn 5 60 10
++        procd_set_param stdout 1
++        procd_set_param stderr 1
++        procd_close_instance
++
++        # Task 2: DHCP lease changes -> /dhcp/notification
++        procd_open_instance dhcp
++        procd_set_param command /usr/share/ucentral/federant_mqtt_dhcp.sh
++        procd_set_param respawn 5 60 10
++        procd_set_param stdout 1
++        procd_set_param stderr 1
++        procd_close_instance
++}
+diff --git a/files/etc/uci-defaults/99-federant-mqtt b/files/etc/uci-defaults/99-federant-mqtt
+new file mode 100755
+index 0000000000..1cffde79a7
+--- /dev/null
++++ b/files/etc/uci-defaults/99-federant-mqtt
+@@ -0,0 +1,5 @@
++#!/bin/sh
++
++/etc/init.d/federant_mqtt enable
++
++exit 0
+diff --git a/files/usr/share/ucentral/federant_mqtt.sh b/files/usr/share/ucentral/federant_mqtt.sh
+new file mode 100755
+index 0000000000..f60e588bb5
+--- /dev/null
++++ b/files/usr/share/ucentral/federant_mqtt.sh
+@@ -0,0 +1,47 @@
++#!/bin/sh
++
++UCI_CONFIG="federant_mqtt"
++
++. /usr/share/libubox/jshn.sh || exit 1
++
++ENABLED="$(uci -q get ${UCI_CONFIG}.config.enabled)"
++[ "$ENABLED" = "1" ] || exit 0
++
++MQTT_URL="$(uci -q get ${UCI_CONFIG}.config.mqtt_url)"
++MQTT_PORT="$(uci -q get ${UCI_CONFIG}.config.mqtt_port)"
++
++TOPIC_BASE="$(uci -q get ${UCI_CONFIG}.ucentral.topic)"
++TOPIC_PARAM="$(uci -q get ${UCI_CONFIG}.ucentral.parameter)"
++
++[ -n "$MQTT_URL" ] || exit 1
++[ -n "$MQTT_PORT" ] || exit 1
++[ -n "$TOPIC_PARAM" ] || exit 1
++
++MQTT_HOST="${MQTT_URL#mqtt://}"
++MQTT_TOPIC="${TOPIC_BASE}${TOPIC_PARAM}"
++
++
++while true
++do
++    mosquitto_sub \
++        -h "$MQTT_HOST" \
++        -p "$MQTT_PORT" \
++        -t "$MQTT_TOPIC" \
++        -q 2 |
++    while IFS= read -r payload
++    do
++        json_init
++        json_add_int sanity 100
++
++        json_add_object data
++            json_add_object unit
++                json_add_string topic "$MQTT_TOPIC"
++                json_add_string payload "$payload"
++            json_close_object
++        json_close_object
++
++        ubus call ucentral health "$(json_dump)"
++    done
++
++    sleep 5
++done
+diff --git a/files/usr/share/ucentral/federant_mqtt_dhcp.sh b/files/usr/share/ucentral/federant_mqtt_dhcp.sh
+new file mode 100755
+index 0000000000..262ea814c9
+--- /dev/null
++++ b/files/usr/share/ucentral/federant_mqtt_dhcp.sh
+@@ -0,0 +1,169 @@
++#!/bin/sh
++
++UCI_CONFIG="federant_mqtt"
++LEASE_FILE="/tmp/dhcp.leases"
++MQTT_TOPIC="/dhcp/notification"
++
++PREV_FILE="/tmp/federant_mqtt_dhcp_prev.$$"
++CURR_FILE="/tmp/federant_mqtt_dhcp_curr.$$"
++MAC_MAP="/tmp/federant_mqtt_mac_map.$$"
++
++. /usr/share/libubox/jshn.sh || exit 1
++
++ENABLED="$(uci -q get ${UCI_CONFIG}.config.enabled)"
++[ "$ENABLED" = "1" ] || exit 0
++
++MQTT_URL="$(uci -q get ${UCI_CONFIG}.config.mqtt_url)"
++MQTT_PORT="$(uci -q get ${UCI_CONFIG}.config.mqtt_port)"
++
++[ -n "$MQTT_URL" ] || exit 1
++[ -n "$MQTT_PORT" ] || exit 1
++
++MQTT_HOST="${MQTT_URL#mqtt://}"
++
++load_mac_map()
++{
++    uci export "$UCI_CONFIG" |
++    awk '
++        $1 == "config" {
++            section = $3
++            gsub(/\047/, "", section)
++            next
++        }
++
++        section == "dhcp" && $1 == "list" && $2 == "devtype" {
++            $1 = ""
++            $2 = ""
++            sub(/^[ \t]+/, "")
++            gsub(/\047/, "")
++            print
++        }
++    ' > "$MAC_MAP"
++}
++
++find_device_type()
++{
++    mac="$(printf '%s' "$1" | tr 'A-F' 'a-f')"
++
++    while read -r device_type prefix
++    do
++        [ -n "$device_type" ] || continue
++        [ -n "$prefix" ] || continue
++
++        prefix="$(printf '%s' "$prefix" | tr 'A-F' 'a-f')"
++
++        case "$mac" in
++            "$prefix"*)
++                echo "$device_type"
++                return
++                ;;
++        esac
++    done < "$MAC_MAP"
++
++    echo "unknown"
++}
++
++publish_event()
++{
++    event="$1"
++    mac="$2"
++    ip="$3"
++    hostname="$4"
++    device_type="$5"
++
++    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
++    uuid="$(cat /proc/sys/kernel/random/uuid)"
++
++    json_init
++
++    json_add_string timestamp "$timestamp"
++    json_add_string service "dhcp"
++    json_add_string type "$event"
++    json_add_string sub_type "notification"
++    json_add_string uuid "$uuid"
++    json_add_string generic_json_version "0.1"
++
++    json_add_object data
++        json_add_object lease
++            json_add_string mac "$mac"
++            json_add_string ip "$ip"
++            json_add_string hostname "$hostname"
++            json_add_string type "$device_type"
++        json_close_object
++    json_close_object
++
++    payload="$(json_dump)"
++
++    mosquitto_pub \
++        -h "$MQTT_HOST" \
++        -p "$MQTT_PORT" \
++        -t "$MQTT_TOPIC" \
++        -q 2 \
++        -m "$payload"
++}
++
++build_current_leases()
++{
++    : > "$CURR_FILE"
++
++    [ -f "$LEASE_FILE" ] || return
++
++    while read -r expiry mac ip hostname client_id
++    do
++        [ -n "$mac" ] || continue
++
++        mac="$(printf '%s' "$mac" | tr 'A-F' 'a-f')"
++        device_type="$(find_device_type "$mac")"
++
++        printf '%s|%s|%s|%s\n' \
++            "$mac" \
++            "$ip" \
++            "$hostname" \
++            "$device_type" >> "$CURR_FILE"
++
++    done < "$LEASE_FILE"
++}
++
++: > "$PREV_FILE"
++
++while true
++do
++    load_mac_map
++    build_current_leases
++
++    # New DHCP leases
++    while IFS='|' read -r mac ip hostname device_type
++    do
++        [ -n "$mac" ] || continue
++
++        if ! grep -q "^${mac}|" "$PREV_FILE"; then
++            publish_event \
++                "added" \
++                "$mac" \
++                "$ip" \
++                "$hostname" \
++                "$device_type"
++        fi
++
++    done < "$CURR_FILE"
++
++    # Removed DHCP leases
++    while IFS='|' read -r mac ip hostname device_type
++    do
++        [ -n "$mac" ] || continue
++
++        if ! grep -q "^${mac}|" "$CURR_FILE"; then
++            publish_event \
++                "removed" \
++                "$mac" \
++                "$ip" \
++                "$hostname" \
++                "$device_type"
++        fi
++
++    done < "$PREV_FILE"
++
++    cp "$CURR_FILE" "$PREV_FILE"
++
++    sleep 5
++done
+-- 
+2.34.1
+
