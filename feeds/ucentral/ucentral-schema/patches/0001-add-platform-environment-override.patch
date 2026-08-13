@@ -1,0 +1,17 @@
+Index: ucentral-schema-2026-07-14-23acec32/system/capabilities.uc
+===================================================================
+--- ucentral-schema-2026-07-14-23acec32.orig/system/capabilities.uc
++++ ucentral-schema-2026-07-14-23acec32/system/capabilities.uc
+@@ -79,7 +79,11 @@ capa.version = {
+ 	schema
+ };
+ 
+-if (board.bridge && board.bridge.name == "switch")
++let platform = getenv("PLATFORM");
++
++if (platform)
++	capa.platform = platform;
++else if (board.bridge && board.bridge.name == "switch")
+ 	capa.platform = "switch";
+ else if (length(wifi))
+ 	capa.platform = "ap";
