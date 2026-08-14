@@ -30,6 +30,7 @@ packages:
   - kmod-sched-bpf
   - kmod-usb-acm
   - lldpd
+  - mosquitto-client-ssl
   - uspot
   - spotfilter
   - switch-fabric
