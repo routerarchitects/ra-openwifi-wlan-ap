@@ -27,13 +27,13 @@ This AP NOS is intended for OpenWiFi-compatible access points managed through
 a uCentral-based cloud controller such as Mango Cloud.
 
 Typical deployment:
-
+```text
 OpenWiFi AP
     ↓ uCentral
 Mango Cloud
     ↓
 Provisioning / Monitoring / Firmware / Analytics / Subscriber Workflows
-
+```
 
 ## Building
 
